@@ -5,52 +5,57 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-const TARGET_URL = 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10';
-const PROXY_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
-
 export default async function handler(req, res) {
-  try {
-    const client = await pool.connect();
+  // অ্যাপ থেকে ডেটা রিসিভ করার অনুমতি
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS wingo_history (
-        issue_id VARCHAR(255) PRIMARY KEY,
-        number INTEGER NOT NULL,
-        color VARCHAR(255) NOT NULL,
-        signal VARCHAR(50) NOT NULL,
-        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-    // Proxy-এর মাধ্যমে রিকোয়েস্ট পাঠানো
-    const response = await fetch(PROXY_URL);
-    const proxyData = await response.json();
-    
-    // প্রক্সি থেকে আসা ডেটা (JSON string) পার্স করা
-    const rawText = proxyData.contents;
-    let data;
+  // ব্রাউজার থেকে চেক করার জন্য
+  if (req.method === 'GET') {
+    return res.status(200).json({ success: true, message: 'Backend is ready to receive data from the Flutter App!' });
+  }
+
+  // অ্যাপ যখন ডেটা পাঠাবে (POST)
+  if (req.method === 'POST') {
     try {
-        data = JSON.parse(rawText);
-    } catch (e) {
-        throw new Error('Proxy blocked or invalid JSON received.');
-    }
+      const results = req.body;
 
-    const results = data.data.list;
+      if (!results || !Array.isArray(results)) {
+        return res.status(400).json({ success: false, error: 'Invalid data format from app' });
+      }
 
-    for (const item of results) {
-      const num = parseInt(item.number);
-      const signal = (num >= 0 && num <= 4) ? 'SMALL' : (num >= 5 && num <= 9) ? 'BIG' : 'UNKNOWN';
+      const client = await pool.connect();
 
       await client.query(`
-        INSERT INTO wingo_history (issue_id, number, color, signal)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (issue_id) DO NOTHING;
-      `, [item.issueNumber, num, item.color, signal]);
-    }
+        CREATE TABLE IF NOT EXISTS wingo_history (
+          issue_id VARCHAR(255) PRIMARY KEY,
+          number INTEGER NOT NULL,
+          color VARCHAR(255) NOT NULL,
+          signal VARCHAR(50) NOT NULL,
+          fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
 
-    client.release();
-    res.status(200).json({ success: true, message: 'Data updated successfully via Proxy!' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+      for (const item of results) {
+        const num = parseInt(item.number);
+        const signal = (num >= 0 && num <= 4) ? 'SMALL' : (num >= 5 && num <= 9) ? 'BIG' : 'UNKNOWN';
+
+        await client.query(`
+          INSERT INTO wingo_history (issue_id, number, color, signal)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (issue_id) DO NOTHING;
+        `, [item.issueNumber, num, item.color, signal]);
+      }
+
+      client.release();
+      return res.status(200).json({ success: true, message: 'Data saved successfully from App!' });
+    } catch (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
   }
 }
