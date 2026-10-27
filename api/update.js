@@ -5,7 +5,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-const API_URL = 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10';
+const TARGET_URL = 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10';
+const PROXY_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
 
 export default async function handler(req, res) {
   try {
@@ -21,20 +22,17 @@ export default async function handler(req, res) {
       );
     `);
 
-    const response = await fetch(API_URL, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    });
-
-    const rawText = await response.text();
+    // Proxy-এর মাধ্যমে রিকোয়েস্ট পাঠানো
+    const response = await fetch(PROXY_URL);
+    const proxyData = await response.json();
+    
+    // প্রক্সি থেকে আসা ডেটা (JSON string) পার্স করা
+    const rawText = proxyData.contents;
     let data;
     try {
         data = JSON.parse(rawText);
     } catch (e) {
-        throw new Error('API request blocked. Response started with: ' + rawText.substring(0, 50));
+        throw new Error('Proxy blocked or invalid JSON received.');
     }
 
     const results = data.data.list;
@@ -51,7 +49,7 @@ export default async function handler(req, res) {
     }
 
     client.release();
-    res.status(200).json({ success: true, message: 'Data updated successfully via Neon!' });
+    res.status(200).json({ success: true, message: 'Data updated successfully via Proxy!' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
