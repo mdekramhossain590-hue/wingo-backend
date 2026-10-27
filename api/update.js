@@ -21,8 +21,22 @@ export default async function handler(req, res) {
       );
     `);
 
-    const response = await fetch(API_URL);
-    const data = await response.json();
+    const response = await fetch(API_URL, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+
+    const rawText = await response.text();
+    let data;
+    try {
+        data = JSON.parse(rawText);
+    } catch (e) {
+        throw new Error('API request blocked. Response started with: ' + rawText.substring(0, 50));
+    }
+
     const results = data.data.list;
 
     for (const item of results) {
